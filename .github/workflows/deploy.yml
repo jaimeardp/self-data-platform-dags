@@ -28,12 +28,12 @@ jobs:
     steps:
       # 1. Checkout the repository code
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       # 2. Authenticate to Google Cloud using Workload Identity Federation
       - id: "auth"
         name: "Authenticate to Google Cloud"
-        uses: "google-github-actions/auth@v1"
+        uses: "google-github-actions/auth@v2"
         with:
           # You will get this value from the platform's Terraform output
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
