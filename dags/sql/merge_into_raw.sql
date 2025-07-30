@@ -13,7 +13,10 @@ USING (
         consumo_datos_gb,
         estado_cuenta,
         SAFE.PARSE_DATE('%Y-%m-%d', fecha_registro)     AS fecha_registro,
-        SAFE.PARSE_DATETIME('%Y-%m-%d %H:%M:%S', fecha_evento) AS fecha_evento,
+        -- SAFE.PARSE_DATETIME('%Y-%m-%d %H:%M:%S', fecha_evento) AS fecha_evento,
+        DATETIME(
+        SAFE.PARSE_TIMESTAMP('%Y-%m-%dT%H:%M:%S%Ez', fecha_evento)
+        ) AS fecha_evento,
         tipo_evento,
         id_dispositivo,
         marca_dispositivo,
@@ -24,10 +27,10 @@ USING (
         event_uuid,
         source_file
     FROM  `self_staging_zone.customer_events_ext`
-    WHERE year  = '{{ data_interval_start.strftime("%Y") }}'
-      AND month = '{{ data_interval_start.strftime("%m") }}'
-      AND day   = '{{ data_interval_start.strftime("%d") }}'
-      AND hour  = '{{ data_interval_start.strftime("%H") }}'
+    WHERE year  = {{ data_interval_start.strftime("%Y") }}
+      AND month = {{ data_interval_start.strftime("%m") }}
+      AND day   = {{ data_interval_start.strftime("%d") }}
+      AND hour  = {{ data_interval_start.strftime("%H") }}
 ) AS S
 ON T.event_uuid = S.event_uuid        -- idempotent key
 AND T.ingestion_ts BETWEEN
