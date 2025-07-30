@@ -39,7 +39,7 @@ with DAG(
             "query": {
                 "query": "{% include 'merge_into_raw.sql' %}",   # Jinja incluirá el archivo
                 "useLegacySql": False,
-                "parameterMode": "NAMED"
+                # "parameterMode": "NAMED"
             }
         },
     )
