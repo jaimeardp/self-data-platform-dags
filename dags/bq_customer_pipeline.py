@@ -34,6 +34,7 @@ with DAG(
 
     merge_raw = BigQueryInsertJobOperator(
         task_id="merge_into_raw",
+        location="us-central1",
         configuration={
             "query": {
                 "query": "{% include 'merge_into_raw.sql' %}",   # Jinja incluirá el archivo
@@ -55,6 +56,7 @@ with DAG(
 
     refresh_curated = BigQueryInsertJobOperator(
         task_id="refresh_curated",
+        location="us-central1",
         configuration={
             "query": {
                 "query": "{% include 'refresh_curated.sql' %}",
