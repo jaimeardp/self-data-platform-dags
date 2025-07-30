@@ -30,7 +30,7 @@ USING (
       AND hour  = '{{ data_interval_start.strftime("%H") }}'
 ) AS S
 ON T.event_uuid = S.event_uuid        -- idempotent key
-AND S.ingestion_ts BETWEEN
+AND T.ingestion_ts BETWEEN
         TIMESTAMP_SUB('{{ data_interval_end }}', INTERVAL 70 MINUTE)
     AND TIMESTAMP_SUB('{{ data_interval_end }}', INTERVAL 10 MINUTE)
 WHEN MATCHED THEN
