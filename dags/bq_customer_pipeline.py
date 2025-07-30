@@ -1,9 +1,13 @@
-# dags/bq_customer_pipeline.py
+# dags/customer_events_pipeline.py
+from pathlib import Path
+from datetime import timedelta
 from airflow import DAG
-from airflow.models.param import Param
 from airflow.utils.dates import days_ago
 from airflow.providers.google.cloud.operators.bigquery import BigQueryInsertJobOperator
-from datetime import timedelta
+
+# ─── Rutas dinámicas ───────────────────────────────────────────────────────────
+DAG_DIR = Path(__file__).parent          # /home/airflow/gcs/dags
+SQL_DIR = DAG_DIR / "sql"                # /home/airflow/gcs/dags/sql
 
 default_args = {
     "owner": "data-team",
@@ -17,30 +21,33 @@ with DAG(
     start_date=days_ago(1),
     schedule="0 * * * *",
     catchup=False,
-    template_searchpath=["/usr/local/airflow/sql"],
+    template_searchpath=[str(SQL_DIR)],  # ← aquí la carpeta SQL
     default_args=default_args,
     params={
-        # Airflow automatically injects execution_date – use it for partition params
-        "p_year": "{{ data_interval_start.strftime('%Y') }}",
+        "p_year":  "{{ data_interval_start.strftime('%Y') }}",
         "p_month": "{{ data_interval_start.strftime('%m') }}",
-        "p_day": "{{ data_interval_start.strftime('%d') }}",
-        "p_hour": "{{ data_interval_start.strftime('%H') }}",
+        "p_day":   "{{ data_interval_start.strftime('%d') }}",
+        "p_hour":  "{{ data_interval_start.strftime('%H') }}",
     },
-    tags=["bigquery","elt"],
+    tags=["bigquery", "elt"],
 ) as dag:
 
     merge_raw = BigQueryInsertJobOperator(
         task_id="merge_into_raw",
         configuration={
             "query": {
-                "query": "{% include 'merge_into_raw.sql' %}",
+                "query": "{% include 'merge_into_raw.sql' %}",   # Jinja incluirá el archivo
                 "useLegacySql": False,
                 "parameterMode": "NAMED",
                 "queryParameters": [
-                    {"name": "p_year",  "parameterType": {"type": "STRING"}, "parameterValue": {"value": "{{ params.p_year }}" }},
-                    {"name": "p_month", "parameterType": {"type": "STRING"}, "parameterValue": {"value": "{{ params.p_month }}" }},
-                    {"name": "p_day",   "parameterType": {"type": "STRING"}, "parameterValue": {"value": "{{ params.p_day }}" }},
-                    {"name": "p_hour",  "parameterType": {"type": "STRING"}, "parameterValue": {"value": "{{ params.p_hour }}" }},
+                    {"name": "p_year",  "parameterType": {"type": "STRING"},
+                     "parameterValue": {"value": "{{ params.p_year }}" }},
+                    {"name": "p_month", "parameterType": {"type": "STRING"},
+                     "parameterValue": {"value": "{{ params.p_month }}" }},
+                    {"name": "p_day",   "parameterType": {"type": "STRING"},
+                     "parameterValue": {"value": "{{ params.p_day }}" }},
+                    {"name": "p_hour",  "parameterType": {"type": "STRING"},
+                     "parameterValue": {"value": "{{ params.p_hour }}" }},
                 ],
             }
         },
@@ -57,4 +64,4 @@ with DAG(
         },
     )
 
-    merge_raw >> refresh_curated   # simple linear flow
+    merge_raw >> refresh_curated
