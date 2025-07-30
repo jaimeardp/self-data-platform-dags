@@ -21,6 +21,6 @@ with DAG(
     # This task simply prints the execution date.
     say_hello = BashOperator(
         task_id="say_hello",
-        bash_command="echo 'Hello from Airflow! This DAG was deployed via CI/CD. Execution date is {{ ds }}'",
+        bash_command="echo 'Hello from Airflow 2! This DAG was deployed via CI/CD. Execution date is {{ ds }}'",
     )
 
