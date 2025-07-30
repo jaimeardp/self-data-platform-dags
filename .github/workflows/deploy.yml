@@ -1,0 +1,60 @@
+# .github/workflows/deploy_dags.yml
+#
+# This workflow automates the deployment of Airflow DAGs to the
+# Cloud Composer GCS bucket.
+
+name: Deploy Airflow DAGs
+
+on:
+  # Triggers the workflow on push events to the main branch
+  push:
+    branches:
+      - main
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  deploy-dags:
+    name: "Deploy DAGs to GCS"
+    runs-on: ubuntu-latest
+    
+    # You can link this to a GitHub Environment if you have one
+    # environment: DEV
+
+    permissions:
+      contents: "read"
+      id-token: "write" # Required for Workload Identity Federation
+
+    steps:
+      # 1. Checkout the repository code
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      # 2. Authenticate to Google Cloud using Workload Identity Federation
+      - id: "auth"
+        name: "Authenticate to Google Cloud"
+        uses: "google-github-actions/auth@v1"
+        with:
+          # You will get this value from the platform's Terraform output
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          # This is the CI/CD service account created by the platform
+          service_account: ${{ secrets.GCP_CICD_SERVICE_ACCOUNT }}
+
+      # 3. Get the Composer DAGs bucket name from the platform's Terraform output
+      #    This step is optional if you prefer to store the full bucket name as a secret.
+      - name: "Get Composer Bucket Name"
+        id: get_bucket
+        run: |
+          # The platform output gives a full gs:// path, so we need to extract just the bucket name.
+          # Example: gs://us-central1-self-cust-analy-123456-bucket/dags -> us-central1-self-cust-analy-123456-bucket
+          COMPOSER_GCS_PREFIX="${{ secrets.COMPOSER_GCS_PREFIX }}"
+          BUCKET_NAME=$(echo $COMPOSER_GCS_PREFIX | sed -e 's|gs://||' -e 's|/dags||')
+          echo "COMPOSER_BUCKET=$BUCKET_NAME" >> $GITHUB_OUTPUT
+
+      # 4. Synchronize the local 'dags' directory with the Composer bucket
+      - name: "Upload DAGs to GCS"
+        run: |
+          echo "Syncing local 'dags' directory to Composer bucket..."
+          gcloud storage rsync ./dags gs://${{ steps.get_bucket.outputs.COMPOSER_BUCKET }}/dags --delete-unmatched-destination-objects --recursive
+          echo "Sync complete."
+
