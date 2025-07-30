@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     
     # You can link this to a GitHub Environment if you have one
-    # environment: DEV
+    environment: DEV
 
     permissions:
       contents: "read"
