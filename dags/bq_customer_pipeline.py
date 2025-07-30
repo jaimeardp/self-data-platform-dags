@@ -46,7 +46,7 @@ with DAG(
         },
     )
 
-    refresh_curated = BigQueryExecuteQueryOperator(
+    refresh_curated = BigQueryInsertJobOperator(
         task_id="refresh_curated",
         location="us-central1",
         configuration={
