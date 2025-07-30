@@ -2,7 +2,7 @@
    Insert or update ONE hour of data from the staging external table into RAW.
    Every column is referenced explicitly to avoid schema‑drift surprises.      */
 
-MERGE `self_raw_zone.customer_events_raw@{{ data_interval_start.strftime('%Y%m%dT%H') }}`        AS T
+MERGE `self_raw_zone.customer_events_raw      AS T
 USING (
     SELECT
         id_cliente,
@@ -30,6 +30,9 @@ USING (
       AND hour  = '{{ data_interval_start.strftime("%H") }}'
 ) AS S
 ON T.event_uuid = S.event_uuid        -- idempotent key
+AND S.ingestion_ts BETWEEN
+        TIMESTAMP_SUB('{{ data_interval_end }}', INTERVAL 70 MINUTE)
+    AND TIMESTAMP_SUB('{{ data_interval_end }}', INTERVAL 10 MINUTE)
 WHEN MATCHED THEN
   /* update only mutable fields; keep event_uuid constant */
   UPDATE SET
