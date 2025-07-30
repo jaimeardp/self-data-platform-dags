@@ -20,7 +20,7 @@ USING (
         antiguedad_cliente_meses,
         score_crediticio,
         origen_captacion,
-        ingestion_ts,
+        SAFE.PARSE_TIMESTAMP('%Y-%m-%dT%H:%M:%S.%f', ingestion_ts) AS ingestion_ts,
         event_uuid,
         source_file
     FROM  `self_staging_zone.customer_events_ext`
