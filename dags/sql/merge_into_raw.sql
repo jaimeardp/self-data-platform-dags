@@ -1,10 +1,11 @@
-MERGE self_raw_zone.customer_events_raw T
+MERGE `self_raw_zone.customer_events_raw`  T
 USING (
-  SELECT * FROM self_staging_zone.customer_events_ext
-  WHERE year  = '{{ params.p_year }}'
-    AND month = '{{ params.p_month }}'
-    AND day   = '{{ params.p_day }}'
-    AND hour  = '{{ params.p_hour }}'
+  SELECT *
+  FROM  `self_staging_zone.customer_events_ext`
+  WHERE year  = '{{ data_interval_start.strftime("%Y") }}'
+    AND month = '{{ data_interval_start.strftime("%m") }}'
+    AND day   = '{{ data_interval_start.strftime("%d") }}'
+    AND hour  = '{{ data_interval_start.strftime("%H") }}'
 ) S
 ON  T.event_uuid = S.event_uuid
 WHEN NOT MATCHED THEN
