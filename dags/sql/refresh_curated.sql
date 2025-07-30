@@ -1,18 +1,17 @@
 -- ─────────────────────────────────────────────────────────────────────────
---  Vista de insights: consumo de datos por plan y fecha
+--  Vista de insights: consumo de datos por plan y fecha (sin _PARTITIONTIME)
 --  Dataset  : self_curated_zone
 --  View name: vw_consumo_insights
 -- ─────────────────────────────────────────────────────────────────────────
 CREATE OR REPLACE VIEW `self_curated_zone.vw_consumo_insights` AS
 WITH hora_a_dia AS (
   SELECT
-    -- Cambiamos la hora de evento a fecha calendario
-    DATE(fecha_evento)                  AS fecha_evento,
-    tipo_plan                           AS plan,
+    DATE(fecha_evento)  AS fecha_evento,   -- Día calendario
+    tipo_plan           AS plan,
     id_cliente,
     consumo_datos_gb
   FROM `self_raw_zone.customer_events_raw`
-  WHERE _PARTITIONTIME >= DATE_SUB(CURRENT_DATE(), INTERVAL 90 DAY)   -- ventana de 90 días
+  WHERE ingestion_ts >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 90 DAY)
 )
 
 SELECT
