@@ -4,7 +4,7 @@ from datetime import timedelta
 from airflow import DAG
 from airflow.utils.dates import days_ago
 from airflow.providers.google.cloud.operators.bigquery import BigQueryInsertJobOperator
-from airflow.providers.google.cloud.operators.bigquery import BigQueryExecuteQueryOperator
+# from airflow.providers.google.cloud.operators.bigquery import BigQueryExecuteQueryOperator
 
 
 # ─── Rutas dinámicas ───────────────────────────────────────────────────────────
@@ -47,10 +47,15 @@ with DAG(
     )
 
     refresh_curated = BigQueryExecuteQueryOperator(
-        task_id   = "refresh_curated",
-        location  = "us‑central1",                 # ← same region as your datasets
-        sql       = "{% include 'refresh_curated.sql' %}",  # your CREATE OR REPLACE VIEW
-        use_legacy_sql = False,
+        task_id="refresh_curated",
+        location="us-central1",
+        configuration={
+            "query": {
+                "query": "{% include 'refresh_curated.sql' %}",
+                "useLegacySql": False,
+                # "writeDisposition": "WRITE_TRUNCATE",
+            }
+        },
     )
 
     merge_raw >> refresh_curated
