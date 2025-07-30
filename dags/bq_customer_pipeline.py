@@ -1,246 +1,214 @@
 """
-Customer Events Hourly Processing Pipeline
-==========================================
-Processes customer events data hourly with proper error handling,
-monitoring, and BigQuery optimization.
+Customer Events Hourly Processing Pipeline (TaskFlow API)
+========================================================
+Simple and clean Airflow DAG using TaskFlow API for processing
+customer events data hourly with BigQuery.
+
+Author: Data Team
+Version: 3.0 (TaskFlow API - Simple)
 """
 
+import json
+import pendulum
 from pathlib import Path
-from datetime import datetime, timedelta
-from airflow import DAG
-from airflow.providers.google.cloud.operators.bigquery import BigQueryInsertJobOperator
-from airflow.providers.google.cloud.sensors.bigquery import BigQueryTableExistenceSensor
-from airflow.operators.python import PythonOperator
-from airflow.utils.task_group import TaskGroup
-from airflow.models import Variable
-import logging
+from typing import Dict, Any
 
-# ─── Configuration ─────────────────────────────────────────────────────────────
+from airflow.sdk import dag, task
+from airflow.sdk.types import RuntimeTaskInstanceProtocol
+from airflow.providers.google.cloud.operators.bigquery import BigQueryInsertJobOperator
+from airflow.models import Variable
+
+# ─── Project Configuration ─────────────────────────────────────────────────────
 DAG_DIR = Path(__file__).parent
 SQL_DIR = DAG_DIR / "sql"
 
-# Get configuration from Airflow Variables with defaults
-GCP_PROJECT_ID = Variable.get("gcp_project_id", default_var="your-project-id")
-BQ_DATASET_RAW = Variable.get("bq_dataset_raw", default_var="raw_zone")
-BQ_DATASET_STAGING = Variable.get("bq_dataset_staging", default_var="staging_zone")
-BQ_DATASET_CURATED = Variable.get("bq_dataset_curated", default_var="curated_zone")
-BQ_LOCATION = Variable.get("bq_location", default_var="us-central1")
+# Configuration from Airflow Variables
+GCP_PROJECT = Variable.get("gcp_project_id", "your-project-id")
+DATASET_RAW = Variable.get("bq_dataset_raw", "raw_zone")  
+DATASET_STAGING = Variable.get("bq_dataset_staging", "staging_zone")
+DATASET_CURATED = Variable.get("bq_dataset_curated", "curated_zone")
+BQ_LOCATION = Variable.get("bq_location", "us-central1")
 
-# ─── Default Arguments ─────────────────────────────────────────────────────────
-default_args = {
-    "owner": "data-team",
-    "depends_on_past": False,
-    "email_on_failure": True,
-    "email_on_retry": False,
-    "email": ["data-team@company.com"],
-    "retries": 2,
-    "retry_delay": timedelta(minutes=3),
-    "execution_timeout": timedelta(hours=1),
-    "sla": timedelta(minutes=30),
-}
-
-# ─── Helper Functions ───────────────────────────────────────────────────────────
-def validate_partition_parameters(**context):
-    """Validate that partition parameters are properly formatted"""
-    params = context['params']
-    
-    # Validate year (4 digits)
-    if not params['p_year'].isdigit() or len(params['p_year']) != 4:
-        raise ValueError(f"Invalid year parameter: {params['p_year']}")
-    
-    # Validate month (01-12)
-    if not params['p_month'].isdigit() or not (1 <= int(params['p_month']) <= 12):
-        raise ValueError(f"Invalid month parameter: {params['p_month']}")
-    
-    # Validate day (01-31)
-    if not params['p_day'].isdigit() or not (1 <= int(params['p_day']) <= 31):
-        raise ValueError(f"Invalid day parameter: {params['p_day']}")
-    
-    # Validate hour (00-23)
-    if not params['p_hour'].isdigit() or not (0 <= int(params['p_hour']) <= 23):
-        raise ValueError(f"Invalid hour parameter: {params['p_hour']}")
-    
-    logging.info(f"Validated partition parameters: {params['p_year']}-{params['p_month']}-{params['p_day']} {params['p_hour']}:00")
-    return True
-
-def get_bq_job_config(sql_file: str, use_params: bool = True) -> dict:
-    """Generate BigQuery job configuration with proper settings"""
-    config = {
-        "query": {
-            "query": f"{{% include '{sql_file}' %}}",
-            "useLegacySql": False,
-            "priority": "INTERACTIVE",
-            "maximumBytesBilled": "1000000000",  # 1GB limit
-            "jobTimeoutMs": "1800000",  # 30 minutes
-            "labels": {
-                "team": "data",
-                "pipeline": "customer-events",
-                "env": "{{ var.value.environment | default('dev', true) }}"
-            }
-        }
-    }
-    
-    if use_params:
-        config["query"]["parameterMode"] = "NAMED"
-        config["query"]["queryParameters"] = [
-            {
-                "name": "p_year",
-                "parameterType": {"type": "STRING"},
-                "parameterValue": {"value": "{{ params.p_year }}"}
-            },
-            {
-                "name": "p_month",
-                "parameterType": {"type": "STRING"},
-                "parameterValue": {"value": "{{ params.p_month }}"}
-            },
-            {
-                "name": "p_day",
-                "parameterType": {"type": "STRING"},
-                "parameterValue": {"value": "{{ params.p_day }}"}
-            },
-            {
-                "name": "p_hour",
-                "parameterType": {"type": "STRING"},
-                "parameterValue": {"value": "{{ params.p_hour }}"}
-            },
-            {
-                "name": "p_project_id",
-                "parameterType": {"type": "STRING"},
-                "parameterValue": {"value": GCP_PROJECT_ID}
-            },
-            {
-                "name": "p_dataset_raw",
-                "parameterType": {"type": "STRING"},
-                "parameterValue": {"value": BQ_DATASET_RAW}
-            },
-            {
-                "name": "p_dataset_staging",
-                "parameterType": {"type": "STRING"},
-                "parameterValue": {"value": BQ_DATASET_STAGING}
-            }
-        ]
-    
-    return config
-
-# ─── DAG Definition ─────────────────────────────────────────────────────────────
-with DAG(
-    dag_id="customer_events_hourly_v2",
-    description="Hourly processing of customer events data with validation and monitoring",
-    start_date=datetime(2024, 1, 1),
-    schedule="5 * * * *",  # Run at 5 minutes past each hour
+# ─── TaskFlow DAG ───────────────────────────────────────────────────────────────
+@dag(
+    schedule=None,  # Run manually or set schedule like "5 * * * *"
+    start_date=pendulum.datetime(2024, 1, 1, tz="UTC"),
     catchup=False,
-    max_active_runs=1,  # Prevent overlapping runs
+    max_active_runs=1,
     template_searchpath=[str(SQL_DIR)],
-    default_args=default_args,
+    default_args={
+        "owner": "data-team",
+        "retries": 2,
+        "retry_delay": pendulum.duration(minutes=3),
+        "email_on_failure": True,
+        "email": ["data-team@company.com"],
+    },
     params={
         "p_year": "{{ data_interval_start.strftime('%Y') }}",
         "p_month": "{{ data_interval_start.strftime('%m') }}",
         "p_day": "{{ data_interval_start.strftime('%d') }}",
         "p_hour": "{{ data_interval_start.strftime('%H') }}",
     },
-    tags=["bigquery", "elt", "customer-data", "hourly"],
-    doc_md=__doc__,
-) as dag:
+    tags=["bigquery", "elt", "taskflow"],
+)
+def customer_events_pipeline():
+    """
+    ### Customer Events ETL Pipeline
+    
+    This is a simple data pipeline example which demonstrates the use of
+    the TaskFlow API using four simple tasks for Extract, Transform, and Load.
+    
+    The pipeline processes customer events hourly:
+    - Extract: Validate partition parameters
+    - Transform: Merge staging data to raw zone  
+    - Transform: Refresh curated summaries
+    - Load: Log execution summary
+    """
 
-    # ─── Validation Tasks ──────────────────────────────────────────────────────
-    validate_params = PythonOperator(
-        task_id="validate_partition_parameters",
-        python_callable=validate_partition_parameters,
-        doc_md="Validates that all partition parameters are properly formatted",
-    )
-
-    # Check if source tables exist
-    check_staging_table = BigQueryTableExistenceSensor(
-        task_id="check_staging_table_exists",
-        project_id=GCP_PROJECT_ID,
-        dataset_id=BQ_DATASET_STAGING,
-        table_id="customer_events_ext",
-        gcp_conn_id="google_cloud_default",
-        timeout=300,
-        poke_interval=30,
-        doc_md="Ensures the source staging table exists before processing",
-    )
-
-    # ─── Data Processing Tasks ─────────────────────────────────────────────────
-    with TaskGroup("raw_data_processing", tooltip="Process raw customer events data") as raw_processing:
+    @task()
+    def validate_parameters(logical_date: pendulum.DateTime, ti: RuntimeTaskInstanceProtocol) -> Dict[str, str]:
+        """
+        #### Validate Parameters Task
         
-        merge_raw_events = BigQueryInsertJobOperator(
-            task_id="merge_customer_events_raw",
-            location=BQ_LOCATION,
-            gcp_conn_id="google_cloud_default",
-            configuration=get_bq_job_config("merge_into_raw.sql", use_params=True),
-            doc_md="""
-            Merges hourly customer events from staging into raw zone.
-            Uses MERGE statement to handle deduplication based on event_uuid.
-            """,
-        )
-
-        # Data quality check after raw merge
-        validate_raw_data = BigQueryInsertJobOperator(
-            task_id="validate_raw_data_quality",
-            location=BQ_LOCATION,
-            gcp_conn_id="google_cloud_default",
-            configuration=get_bq_job_config("validate_raw_data.sql", use_params=True),
-            doc_md="Validates data quality metrics for the processed hour",
-        )
-
-        merge_raw_events >> validate_raw_data
-
-    with TaskGroup("curated_data_processing", tooltip="Process curated customer data") as curated_processing:
+        A simple validation task to check partition parameters 
+        are properly formatted for the data pipeline.
+        """
+        # Get parameters from the DAG run
+        params = ti.dag_run.conf or {}
         
-        refresh_curated_events = BigQueryInsertJobOperator(
-            task_id="refresh_curated_customer_events",
+        # Extract date components from logical_date
+        year = logical_date.strftime('%Y')
+        month = logical_date.strftime('%m')
+        day = logical_date.strftime('%d')
+        hour = logical_date.strftime('%H')
+        
+        # Use params if provided, otherwise use logical_date
+        year = params.get('p_year', year)
+        month = params.get('p_month', month)
+        day = params.get('p_day', day)
+        hour = params.get('p_hour', hour)
+        
+        # Simple validation
+        if not (year.isdigit() and len(year) == 4):
+            raise ValueError(f"Invalid year: {year}")
+        if not (month.isdigit() and 1 <= int(month) <= 12):
+            raise ValueError(f"Invalid month: {month}")
+        if not (day.isdigit() and 1 <= int(day) <= 31):
+            raise ValueError(f"Invalid day: {day}")
+        if not (hour.isdigit() and 0 <= int(hour) <= 23):
+            raise ValueError(f"Invalid hour: {hour}")
+            
+        return {
+            "partition": f"{year}-{month}-{day} {hour}:00:00",
+            "p_year": year,
+            "p_month": month,
+            "p_day": day,
+            "p_hour": hour,
+            "status": "validated"
+        }
+
+    @task()
+    def merge_raw_data(validation_result: Dict[str, str]) -> Dict[str, Any]:
+        """
+        #### Merge Raw Data Task
+        
+        A merge task which takes validated parameters and merges
+        staging data into the raw zone using BigQuery MERGE statement.
+        """
+        merge_job = BigQueryInsertJobOperator(
+            task_id="merge_bq_job",
             location=BQ_LOCATION,
-            gcp_conn_id="google_cloud_default",
             configuration={
-                **get_bq_job_config("refresh_curated.sql", use_params=False),
                 "query": {
-                    **get_bq_job_config("refresh_curated.sql", use_params=False)["query"],
+                    "query": "{% include 'merge_into_raw.sql' %}",
+                    "useLegacySql": False,
+                    "parameterMode": "NAMED",
+                    "queryParameters": [
+                        {"name": "p_year", "parameterType": {"type": "STRING"}, 
+                         "parameterValue": {"value": validation_result["p_year"]}},
+                        {"name": "p_month", "parameterType": {"type": "STRING"}, 
+                         "parameterValue": {"value": validation_result["p_month"]}},
+                        {"name": "p_day", "parameterType": {"type": "STRING"}, 
+                         "parameterValue": {"value": validation_result["p_day"]}},
+                        {"name": "p_hour", "parameterType": {"type": "STRING"}, 
+                         "parameterValue": {"value": validation_result["p_hour"]}},
+                        {"name": "p_project_id", "parameterType": {"type": "STRING"}, 
+                         "parameterValue": {"value": GCP_PROJECT}},
+                        {"name": "p_dataset_staging", "parameterType": {"type": "STRING"}, 
+                         "parameterValue": {"value": DATASET_STAGING}},
+                        {"name": "p_dataset_raw", "parameterType": {"type": "STRING"}, 
+                         "parameterValue": {"value": DATASET_RAW}},
+                    ],
+                }
+            },
+        )
+        
+        result = merge_job.execute(context={})
+        return {
+            "job_id": result.job_id if result else "unknown",
+            "partition": validation_result["partition"],
+            "status": "merged"
+        }
+
+    @task()
+    def refresh_curated_data(merge_result: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        #### Refresh Curated Data Task
+        
+        A transform task which takes the merge result and refreshes
+        curated tables with daily customer event summaries.
+        """
+        curated_job = BigQueryInsertJobOperator(
+            task_id="curated_bq_job",
+            location=BQ_LOCATION,
+            configuration={
+                "query": {
+                    "query": "{% include 'refresh_curated.sql' %}",
+                    "useLegacySql": False,
                     "writeDisposition": "WRITE_TRUNCATE",
                     "createDisposition": "CREATE_IF_NEEDED",
                 }
             },
-            doc_md="""
-            Refreshes the curated customer events table with aggregated data.
-            Truncates and rebuilds the entire table for consistency.
-            """,
         )
-
-        # Data freshness check
-        check_curated_freshness = BigQueryInsertJobOperator(
-            task_id="check_curated_data_freshness",
-            location=BQ_LOCATION,
-            gcp_conn_id="google_cloud_default",
-            configuration=get_bq_job_config("check_data_freshness.sql", use_params=False),
-            doc_md="Validates that curated data is fresh and complete",
-        )
-
-        refresh_curated_events >> check_curated_freshness
-
-    # ─── Monitoring Task ───────────────────────────────────────────────────────
-    def log_pipeline_metrics(**context):
-        """Log pipeline execution metrics"""
-        task_instances = context['dag_run'].get_task_instances()
         
-        metrics = {
-            'dag_run_id': context['dag_run'].run_id,
-            'execution_date': context['execution_date'].isoformat(),
-            'total_tasks': len(task_instances),
-            'successful_tasks': len([ti for ti in task_instances if ti.state == 'success']),
-            'failed_tasks': len([ti for ti in task_instances if ti.state == 'failed']),
-            'partition_processed': f"{context['params']['p_year']}-{context['params']['p_month']}-{context['params']['p_day']} {context['params']['p_hour']}:00"
+        result = curated_job.execute(context={})
+        return {
+            "job_id": result.job_id if result else "unknown",
+            "status": "refreshed",
+            "merge_job_id": merge_result["job_id"],
+            "partition": merge_result["partition"]
+        }
+
+    @task()
+    def log_pipeline_summary(curated_result: Dict[str, Any], logical_date: pendulum.DateTime, ti: RuntimeTaskInstanceProtocol) -> None:
+        """
+        #### Log Pipeline Summary Task
+        
+        A simple logging task which takes the curated result and logs
+        the pipeline execution summary for monitoring purposes.
+        """
+        dag_run_id = ti.dag_run.run_id
+        
+        summary = {
+            "dag_run_id": dag_run_id,
+            "logical_date": logical_date.isoformat(),
+            "partition_processed": curated_result.get("partition", "unknown"),
+            "merge_job_id": curated_result["merge_job_id"],
+            "curated_job_id": curated_result["job_id"],
+            "pipeline_status": "completed"
         }
         
-        logging.info(f"Pipeline metrics: {metrics}")
-        return metrics
+        print(f"Pipeline Summary: {json.dumps(summary, indent=2)}")
+        print(f"Logical Date: {logical_date}")
+        print(f"Task Instance: {ti.task_id}")
 
-    log_metrics = PythonOperator(
-        task_id="log_pipeline_metrics",
-        python_callable=log_pipeline_metrics,
-        doc_md="Logs pipeline execution metrics for monitoring",
-        trigger_rule="all_done",  # Run regardless of upstream success/failure
-    )
+    # ─── Pipeline Flow ─────────────────────────────────────────────────────────
+    # Simple 4-step pipeline: validate → merge → curated → log
+    validation = validate_parameters()
+    merge_result = merge_raw_data(validation)
+    curated_result = refresh_curated_data(merge_result)
+    log_pipeline_summary(curated_result)
 
-    # ─── Task Dependencies ─────────────────────────────────────────────────────
-    validate_params >> check_staging_table >> raw_processing
-    raw_processing >> curated_processing >> log_metrics
+
+# ─── DAG Instantiation ─────────────────────────────────────────────────────────
+customer_events_dag = customer_events_pipeline()
