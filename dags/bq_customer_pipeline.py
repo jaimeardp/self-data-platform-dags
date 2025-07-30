@@ -29,6 +29,7 @@ with DAG(
         "p_day":   "{{ data_interval_start.strftime('%d') }}",
         "p_hour":  "{{ data_interval_start.strftime('%H') }}",
     },
+    render_template_as_native_objects=True,
     tags=["bigquery", "elt"],
 ) as dag:
 
