@@ -35,35 +35,24 @@ with DAG(
     merge_raw = BigQueryInsertJobOperator(
         task_id="merge_into_raw",
         location="us-central1",
-        configuration={
-            "query": {
-                "query": "{% include 'merge_into_raw.sql' %}",   # Jinja incluirá el archivo
-                "useLegacySql": False,
-                "parameterMode": "NAMED",
-                "queryParameters": [
-                    {"name": "p_year",  "parameterType": {"type": "STRING"},
-                     "parameterValue": {"value": "{{ params.p_year }}" }},
-                    {"name": "p_month", "parameterType": {"type": "STRING"},
-                     "parameterValue": {"value": "{{ params.p_month }}" }},
-                    {"name": "p_day",   "parameterType": {"type": "STRING"},
-                     "parameterValue": {"value": "{{ params.p_day }}" }},
-                    {"name": "p_hour",  "parameterType": {"type": "STRING"},
-                     "parameterValue": {"value": "{{ params.p_hour }}" }},
-                ],
-            }
+        sql="{% include 'merge_into_raw.sql' %}",  # templated SQL file
+        use_legacy_sql=False,
+        parameter_mode="NAMED",
+        # <‑‑‑ pass the params here – Airflow converts them to queryParameters
+        parameters={
+            "p_year":  "{{ params.p_year }}",
+            "p_month": "{{ params.p_month }}",
+            "p_day":   "{{ params.p_day }}",
+            "p_hour":  "{{ params.p_hour }}",
         },
     )
 
     refresh_curated = BigQueryInsertJobOperator(
         task_id="refresh_curated",
         location="us-central1",
-        configuration={
-            "query": {
-                "query": "{% include 'refresh_curated.sql' %}",
-                "useLegacySql": False,
-                "writeDisposition": "WRITE_TRUNCATE",
-            }
-        },
+        sql="{% include 'refresh_curated.sql' %}",
+        use_legacy_sql=False,
+        write_disposition="WRITE_TRUNCATE",
     )
 
     merge_raw >> refresh_curated
