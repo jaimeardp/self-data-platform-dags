@@ -2,7 +2,7 @@
    Insert or update ONE hour of data from the staging external table into RAW.
    Every column is referenced explicitly to avoid schema‑drift surprises.      */
 
-MERGE `self_raw_zone.customer_events_raw      AS T
+MERGE `self_raw_zone.customer_events_raw`      AS T
 USING (
     SELECT
         id_cliente,
