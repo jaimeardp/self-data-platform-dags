@@ -77,5 +77,5 @@ Para que el pipeline de CI/CD funcione, se necesita realizar una configuración 
 ## Cómo Añadir un Nuevo DAG
 
 1.  **Crea tu archivo Python:** Añade tu nuevo archivo de DAG (ej. `mi_nuevo_dag.py`) dentro del directorio `dags/`.
-2.  **Añade Archivos Auxiliares (Opcional):** Si tu DAG usa archivos SQL o de configuración, añádelos en los subdirectorios `dags/sql/` o `dags/configs/` respectivamente.
+2.  **Añade Archivos Auxiliares (Opcional):** Si tu DAG usa archivos SQL o de configuración, añádelos en los subdirectorios `dags/sql/` respectivamente.
 3.  **Commit y Push:** Sube tus cambios a la rama `main`. El pipeline se encargará del resto, y tu nuevo DAG aparecerá en la UI de Airflow en pocos minutos.
