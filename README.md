@@ -30,8 +30,6 @@ Para mantener el orden y la claridad, el repositorio sigue la siguiente estructu
 │       └── deploy_dags.yml # Workflow de CI/CD para sincronizar los DAGs
 │
 └── dags/
-    ├── configs/          # Archivos de configuración (JSON, YAML) para los DAGs
-    │   └── mi_pipeline.json
     │
     ├── sql/              # Consultas SQL utilizadas por los DAGs
     │   └── mi_transformacion.sql
