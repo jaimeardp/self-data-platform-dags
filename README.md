@@ -27,19 +27,19 @@ Para mantener el orden y la claridad, el repositorio sigue la siguiente estructu
 .
 ├── .github/
 │   └── workflows/
-│       └── deploy_dags.yml # Workflow de CI/CD para sincronizar los DAGs
+│       └── deploy.yml # Workflow de CI/CD para sincronizar los DAGs
 │
 └── dags/
     │
     ├── sql/              # Consultas SQL utilizadas por los DAGs
-    │   └── mi_transformacion.sql
+    │   └── merge_into_raw.sql
+    |   └── refresh_curated.sql
     │
     ├── bq_customer_pipeline.py # Un DAG de ejemplo
     └── example_dags.py         # Otro DAG de ejemplo
 ```
 
 * **`dags/`**: Es el directorio raíz que se sincroniza con el bucket de Cloud Composer. Todos los archivos `.py` que definen un DAG deben estar aquí.
-* **`dags/configs/`**: Subdirectorio para almacenar configuraciones externas que los DAGs puedan necesitar, evitando hardcodear valores.
 * **`dags/sql/`**: Subdirectorio para almacenar archivos `.sql` complejos, manteniendo la lógica SQL separada del código Python.
 
 ## Proceso de Despliegue (CI/CD)
